@@ -1,14 +1,15 @@
-// Updated game_state module
 module game_state(
     input logic clk,
     input logic reset,
     input logic start,
-    input logic collision,  // New input from collision_detector
+    input logic collision,
+    input logic [8:0] player_y,  // New input to check player's y position
     output logic [1:0] state
 );
     localparam [1:0] START = 2'b00;
     localparam [1:0] PLAYING = 2'b01;
     localparam [1:0] OVER = 2'b10;
+    localparam [1:0] WIN = 2'b11;  // New WIN state
 
     always_ff @(posedge clk) begin
         if (reset)
@@ -17,6 +18,8 @@ module game_state(
             state <= PLAYING;
         else if (state == PLAYING && collision)
             state <= OVER;
+        else if (state == PLAYING && player_y <= 9'd10)  // Win condition
+            state <= WIN;
         else if (state === 2'bxx)  
             state <= START;
     end

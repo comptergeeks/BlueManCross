@@ -379,6 +379,15 @@ text_renderer text_GO_V2 (.x(xt), .y(yt), .text_x(10'd280), .text_y(9'd240), .ch
 text_renderer text_GO_E3 (.x(xt), .y(yt), .text_x(10'd288), .text_y(9'd240), .character("E"), .is_text_pixel(game_over_message_pixels[19]));
 text_renderer text_GO_R3 (.x(xt), .y(yt), .text_x(10'd296), .text_y(9'd240), .character("R"), .is_text_pixel(game_over_message_pixels[20]));
 
+logic [5:0] win_message_pixels;
+text_renderer text_WIN_Y (.x(xt), .y(yt), .text_x(10'd280), .text_y(9'd220), .character("Y"), .is_text_pixel(win_message_pixels[0]));
+text_renderer text_WIN_O (.x(xt), .y(yt), .text_x(10'd288), .text_y(9'd220), .character("O"), .is_text_pixel(win_message_pixels[1]));
+text_renderer text_WIN_U (.x(xt), .y(yt), .text_x(10'd296), .text_y(9'd220), .character("U"), .is_text_pixel(win_message_pixels[2]));
+text_renderer text_WIN_W (.x(xt), .y(yt), .text_x(10'd312), .text_y(9'd220), .character("W"), .is_text_pixel(win_message_pixels[3]));
+text_renderer text_WIN_O2 (.x(xt), .y(yt), .text_x(10'd320), .text_y(9'd220), .character("O"), .is_text_pixel(win_message_pixels[4]));
+text_renderer text_WIN_N (.x(xt), .y(yt), .text_x(10'd328), .text_y(9'd220), .character("N"), .is_text_pixel(win_message_pixels[5]));
+
+
 	 logic [9:0] obstacle_x [NUM_ROWS-1:0][OBSTACLES_PER_ROW-1:0];
     logic [8:0] obstacle_y [NUM_ROWS-1:0][OBSTACLES_PER_ROW-1:0];
 	 logic direction [NUM_ROWS-1:0];
@@ -400,6 +409,7 @@ obstacle_manager #(
         .reset(reset),
         .start(start),
         .collision(collision),
+		  .player_y(playerY),  
         .state(gameState)
     );
 
@@ -506,11 +516,11 @@ obstacle_manager #(
 	 
 
 // Constants for truck movement
-reg [9:0] truck_x;
-reg [8:0] truck_y;
-reg truck_dir_x;  // 0 for left, 1 for right
-reg truck_dir_y;  // 0 for up, 1 for down
-reg [31:0] time_since_game_over;
+logic [9:0] truck_x;
+logic [8:0] truck_y;
+logic truck_dir_x;  // 0 for left, 1 for right
+logic truck_dir_y;  // 0 for up, 1 for down
+logic [31:0] time_since_game_over;
 
 // Constants for truck movement
 localparam TRUCK_SPEED_X = 2;
@@ -520,7 +530,7 @@ localparam TRUCK_HEIGHT = 32;
 localparam SCREEN_WIDTH = 640;
 localparam SCREEN_HEIGHT = 480;
 
-// Truck movement logic
+// bouncing truck basic logic
 always_ff @(posedge CLOCK_50 or posedge reset) begin
     if (reset) begin
         truck_x <= 10'd320;  // Start in the middle of the screen
@@ -568,12 +578,109 @@ always_ff @(posedge CLOCK_50 or posedge reset) begin
 end
 
 
+
+reg [9:0] blue_man_x;
+reg [8:0] blue_man_y;
+reg blue_man_dir_x;
+reg blue_man_dir_y;
+reg [31:0] time_since_win;
+
+// Constants for blue man movement
+localparam BLUE_MAN_SPEED_X = 3;  // Slightly faster than the truck for variety
+localparam BLUE_MAN_SPEED_Y = 3;
+localparam BLUE_MAN_WIDTH = 16;
+localparam BLUE_MAN_HEIGHT = 16;
+
+// Blue man movement logic
+always_ff @(posedge CLOCK_50 or posedge reset) begin
+    if (reset) begin
+        blue_man_x <= 10'd320;  // Start in the middle of the screen
+        blue_man_y <= 9'd240;
+        blue_man_dir_x <= 1'b1;  // Start moving right
+        blue_man_dir_y <= 1'b1;  // Start moving down
+        time_since_win <= 0;
+    end else if (gameState == 2'b11 && frame_start) begin  // Only move when in WIN state and at frame start
+        time_since_win <= time_since_win + 1;
+
+        // Update X position
+        if (blue_man_dir_x == 1'b1) begin
+            if (blue_man_x + BLUE_MAN_SPEED_X + BLUE_MAN_WIDTH >= SCREEN_WIDTH) begin
+                blue_man_x <= SCREEN_WIDTH - BLUE_MAN_WIDTH;
+                blue_man_dir_x <= 1'b0;
+            end else begin
+                blue_man_x <= blue_man_x + BLUE_MAN_SPEED_X;
+            end
+        end else begin
+            if (blue_man_x < BLUE_MAN_SPEED_X) begin
+                blue_man_x <= 0;
+                blue_man_dir_x <= 1'b1;
+            end else begin
+                blue_man_x <= blue_man_x - BLUE_MAN_SPEED_X;
+            end
+        end
+
+        // Update Y position
+        if (blue_man_dir_y == 1'b1) begin
+            if (blue_man_y + BLUE_MAN_SPEED_Y + BLUE_MAN_HEIGHT >= SCREEN_HEIGHT) begin
+                blue_man_y <= SCREEN_HEIGHT - BLUE_MAN_HEIGHT;
+                blue_man_dir_y <= 1'b0;
+            end else begin
+                blue_man_y <= blue_man_y + BLUE_MAN_SPEED_Y;
+            end
+        end else begin
+            if (blue_man_y < BLUE_MAN_SPEED_Y) begin
+                blue_man_y <= 0;
+                blue_man_dir_y <= 1'b1;
+            end else begin
+                blue_man_y <= blue_man_y - BLUE_MAN_SPEED_Y;
+            end
+        end
+    end
+end
+
+
+
 // Main rendering logic
 always_ff @(posedge CLOCK_25) begin
     if(reset) begin
         rout <= 8'h00;
         gout <= 8'h00;
         bout <= 8'h00;
+    end else  if (gameState == 2'b11) begin // WIN state
+        if (|win_message_pixels) begin
+            // Render "You won!" in green
+            rout <= 8'h00;
+            gout <= 8'hFF;
+            bout <= 8'h00;
+        end else if (xt >= blue_man_x && xt < (blue_man_x + BLUE_MAN_WIDTH) &&
+                     yt >= blue_man_y && yt < (blue_man_y + BLUE_MAN_HEIGHT)) begin
+            // Render bouncing blue man
+            logic [3:0] sprite_x, sprite_y;
+            sprite_x = xt - blue_man_x;
+            sprite_y = yt - blue_man_y;
+            if (BLUE_MAN_OUTLINE[sprite_y * BLUE_MAN_WIDTH + sprite_x] && 
+                !BLUE_MAN_SPRITE[sprite_y * BLUE_MAN_WIDTH + sprite_x]) begin
+                // Render black outline
+                rout <= 8'h00;
+                gout <= 8'h00;
+                bout <= 8'h00;
+            end else if (BLUE_MAN_SPRITE[sprite_y * BLUE_MAN_WIDTH + sprite_x]) begin
+                // Render blue sprite
+                rout <= 8'h00;
+                gout <= 8'h00;
+                bout <= 8'hFF;
+            end else begin
+                // Transparent pixel, render background
+                rout <= 8'h40;
+                gout <= 8'h40;
+                bout <= 8'h40;
+            end
+        end else begin
+            // Render a light background
+            rout <= 8'h40;
+            gout <= 8'h40;
+            bout <= 8'h40;
+        end
     end else if (gameState == 2'b00) begin // START state
         // Render start screen text
         if (|title_pixels) begin
@@ -629,9 +736,9 @@ always_ff @(posedge CLOCK_25) begin
             end
         end else begin
             // Render a dark background
-            rout <= 8'h20;
-            gout <= 8'h20;
-            bout <= 8'h20;
+            rout <= 8'hFF;
+            gout <= 8'hFF;
+            bout <= 8'hFF;
         end
     end else if (xt >= X_START && xt < X_STOP && yt >= Y_START && yt < Y_STOP) begin
         logic [9:0] rel_x;
